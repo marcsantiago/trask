@@ -2,6 +2,98 @@
 
 A simple, Git-friendly task tracker that stores tasks as Markdown files.
 
+## Installation
+
+### From Source
+
+Trask can be built and installed using Cargo.
+
+Clone the repository:
+
+```bash
+git clone <repository-url>
+cd trask
+```
+
+Install Trask:
+
+```bash
+cargo install --path .
+```
+
+This installs the `trask` executable into Cargo's binary directory.
+
+Verify the installation:
+
+```bash
+trask --help
+```
+
+If `trask` is not found after installation, make sure Cargo's binary directory is in your `PATH`:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+### Build Without Installing
+
+To build Trask without installing it:
+
+```bash
+cargo build
+```
+
+The debug executable will be available at:
+
+```text
+target/debug/trask
+```
+
+Run it directly with:
+
+```bash
+cargo run -- --help
+```
+
+### Release Build
+
+For an optimized release build:
+
+```bash
+cargo build --release
+```
+
+The release executable will be:
+
+```text
+target/release/trask
+```
+
+You can run it directly:
+
+```bash
+./target/release/trask --help
+```
+
+Or install the optimized release binary:
+
+```bash
+cargo install --path .
+```
+
+### Requirements
+
+Trask is a Rust application and requires a current Rust toolchain with Cargo.
+
+Check that Rust and Cargo are installed:
+
+```bash
+rustc --version
+cargo --version
+```
+
+If you need to install Rust, use `rustup`.
+
 ## Inspiration
 
 This project was inspired by [Tsoding's Tatr](https://github.com/tsoding/tatr), an improvised task-tracking system designed to be more powerful than source-code TODOs without requiring a full issue tracker.
@@ -74,6 +166,14 @@ Create a task with:
 trask new "Fix ad request timeout"
 ```
 
+The `new` command also has the following aliases:
+
+```bash
+trask n "Fix ad request timeout"
+trask add "Fix ad request timeout"
+trask a "Fix ad request timeout"
+```
+
 Trask automatically generates a unique timestamp-based task ID.
 
 For example:
@@ -93,11 +193,15 @@ The generated `TASK.md` looks like:
 - PRIORITY: 4294967295
 - TAGS:
 
+# Description
+
 ```
+
+The default status is `OPEN`.
 
 The default priority is `u32::MAX` (`4294967295`), which causes newly created tasks to appear first when using the default priority sort.
 
-Edit the `TASK.md` file directly to add or modify the task.
+Edit the `TASK.md` file directly to add or modify the task description.
 
 ## Task Format
 
@@ -109,6 +213,8 @@ Each task contains a `TASK.md` file with the following format:
 - STATUS: OPEN
 - PRIORITY: 50
 - TAGS: rtb, exchange, timeout
+
+# Description
 
 Task description goes here.
 
@@ -123,6 +229,24 @@ The description can contain normal Markdown.
 OPEN
 CLOSED
 ```
+
+Trask represents these statuses internally using the `TaskStatus` enum.
+
+A newly created task always starts with:
+
+```text
+OPEN
+```
+
+To close a task, edit its `TASK.md`:
+
+```markdown
+- STATUS: CLOSED
+```
+
+When using `trask list`, closed tasks are excluded by default.
+
+Use `--closed` or `-c` to include closed tasks.
 
 ### Priority
 
@@ -152,9 +276,21 @@ An empty tag list is valid:
 - TAGS:
 ```
 
+### Description
+
+The `# Description` heading marks the beginning of the task description:
+
+```markdown
+# Description
+
+Task description goes here.
+```
+
+Everything after the `# Description` heading is treated as the task description and may contain normal Markdown.
+
 ## List Tasks
 
-List all tasks:
+List open tasks:
 
 ```bash
 trask list
@@ -166,7 +302,36 @@ You can also use the shorthand:
 trask l
 ```
 
-By default, tasks are sorted by priority in descending order.
+By default, closed tasks are excluded and tasks are sorted by priority in descending order.
+
+Example:
+
+```text
+20260919-160200 [OPEN] [4294967295] Add Helix integration
+20260919-154500 [OPEN] [100] Fix ad request timeout
+```
+
+A closed task such as:
+
+```text
+20260919-161030 [CLOSED] [10] Initial project setup
+```
+
+is not shown by default.
+
+### Include Closed Tasks
+
+Use `--closed` or `-c` to include closed tasks:
+
+```bash
+trask list --closed
+```
+
+or:
+
+```bash
+trask l -c
+```
 
 Example:
 
@@ -175,6 +340,8 @@ Example:
 20260919-154500 [OPEN] [100] Fix ad request timeout
 20260919-161030 [CLOSED] [10] Initial project setup
 ```
+
+The `--closed` option does not mean "show only closed tasks." It means **include closed tasks in the results**.
 
 ### Sorting
 
@@ -257,7 +424,7 @@ trask l -s i -r
 trask l -s t -r
 ```
 
-## Filter by Tag
+### Filter by Tag
 
 Use `--tag` or `-t` to show only tasks containing a specific tag:
 
@@ -273,20 +440,16 @@ trask l -t rust
 
 For example, given:
 
-```text
-20260919-154500 [OPEN] [100] Fix ad request timeout
-20260919-160200 [OPEN] [50] Add Rust parser
-20260919-161030 [OPEN] [25] Update dashboard
-```
-
-and:
-
 ```markdown
 # Fix ad request timeout
 
 - STATUS: OPEN
 - PRIORITY: 100
 - TAGS: rtb, exchange
+
+# Description
+
+Investigate why ad requests occasionally exceed the 100ms timeout.
 ```
 
 ```markdown
@@ -295,6 +458,10 @@ and:
 - STATUS: OPEN
 - PRIORITY: 50
 - TAGS: rust, tooling
+
+# Description
+
+Improve the Markdown parser.
 ```
 
 ```markdown
@@ -303,6 +470,10 @@ and:
 - STATUS: OPEN
 - PRIORITY: 25
 - TAGS: frontend, dashboard
+
+# Description
+
+Update the dashboard UI.
 ```
 
 then:
@@ -335,29 +506,39 @@ trask l -t rust -t rtb
 
 only returns tasks containing both `rust` and `rtb`.
 
-### Combine Filtering and Sorting
+### Combine Closed Tasks, Filtering, and Sorting
 
-Tags can be combined with any sort option and reverse:
+All list options can be combined.
 
-```bash
-trask l -t rust -s p
-```
+Include closed tasks and sort by priority:
 
 ```bash
-trask l -t rust -s p -r
+trask l -c -s p
 ```
+
+Include closed tasks and reverse the priority sort:
 
 ```bash
-trask l -t rust -t tooling -s i
+trask l -c -s p -r
 ```
 
-For example:
+Show only Rust tasks and sort by title:
 
 ```bash
-trask l -t rtb -s p
+trask l -t rust -s t
 ```
 
-shows only RTB-related tasks, ordered by priority.
+Show Rust tasks, including closed tasks, sorted by ID:
+
+```bash
+trask l -c -t rust -s i
+```
+
+Show Rust and tooling tasks, including closed tasks, sorted by reverse priority:
+
+```bash
+trask l -c -t rust -t tooling -s p -r
+```
 
 ## Show a Task
 
@@ -365,6 +546,12 @@ Display a task using its ID:
 
 ```bash
 trask show 20260919-154500
+```
+
+The `show` command also has the shorthand alias:
+
+```bash
+trask s 20260919-154500
 ```
 
 Example:
@@ -406,9 +593,15 @@ Attachments stored alongside a task are also tracked normally by Git.
 
 ```text
 trask init
+
 trask new <title>
 trask n <title>
+trask add <title>
+trask a <title>
+
 trask show <id>
+trask s <id>
+
 trask list [OPTIONS]
 trask l [OPTIONS]
 ```
@@ -424,14 +617,19 @@ trask init
 Creates the `.trask` marker and `tasks/` directory.
 
 ### `new`
-trask new <title>
-trask n <title>
 
 Create a new task:
 
 ```bash
 trask new <title>
+```
+
+Aliases:
+
+```bash
 trask n <title>
+trask add <title>
+trask a <title>
 ```
 
 A timestamp-based task ID is automatically generated.
@@ -460,23 +658,38 @@ Options:
 -s, --sort <priority|p|id|i|title|t>
 -r, --reverse
 -t, --tag <tag>
+-c, --closed
+```
+
+Sort aliases:
+
+```text
+priority / p
+id / i
+title / t
 ```
 
 Examples:
 
 ```bash
 trask l
+trask l -c
+
 trask l -s p
-trask l --sort priority
 trask l -s i
-trask l --sort id
 trask l -s t
-trask l --sort title
+
 trask l -r
+trask l -c -r
+
 trask l -t rust
 trask l -t rust -t tooling
+
 trask l -t rust -s t
 trask l -t rust -s p -r
+
+trask l -c -t rust -s i
+trask l -c -t rust -t tooling -s p -r
 ```
 
 ## Design
@@ -490,9 +703,24 @@ title
 status
 priority
 tags
+description
 ```
 
-Everything after the task properties is treated as the task description and may contain normal Markdown.
+The task status is represented internally by a `TaskStatus` enum with two values:
+
+```text
+Open
+Closed
+```
+
+These are serialized to Markdown as:
+
+```text
+OPEN
+CLOSED
+```
+
+Everything after the `# Description` heading is treated as the task description and may contain normal Markdown.
 
 The task ID belongs to the task directory rather than the `TASK.md` file:
 

@@ -1,8 +1,6 @@
-// src/main.rs
-
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
-use trask::{Task, TaskEntry, TaskId, TaskStore};
+use trask::{Task, TaskEntry, TaskId, TaskStatus, TaskStore};
 
 #[derive(Debug, Parser)]
 #[command(name = "trask")]
@@ -16,7 +14,7 @@ struct Cli {
 enum Command {
     Init,
 
-    #[command(alias = "n")]
+    #[command(alias = "n", alias = "add", alias = "a")]
     New {
         title: String,
     },
@@ -36,6 +34,9 @@ enum Command {
 
         #[arg(short, long)]
         tag: Vec<String>,
+
+        #[arg(short, long)]
+        closed: bool,
     },
 }
 
@@ -58,7 +59,12 @@ fn main() -> Result<()> {
         Command::Init => init()?,
         Command::New { title } => new_task(&title)?,
         Command::Show { id } => show_task(&id)?,
-        Command::List { sort, reverse, tag } => list_tasks(sort, reverse, &tag)?,
+        Command::List {
+            sort,
+            reverse,
+            tag,
+            closed,
+        } => list_tasks(sort, reverse, &tag, closed)?,
     }
 
     Ok(())
@@ -78,7 +84,7 @@ fn new_task(title: &str) -> Result<()> {
 
     let task = Task {
         title: title.to_string(),
-        status: "OPEN".to_string(),
+        status: TaskStatus::Open,
         priority: u32::MAX,
         tags: Vec::new(),
         description: String::new(),
@@ -92,19 +98,25 @@ fn new_task(title: &str) -> Result<()> {
 fn show_task(id: &str) -> Result<()> {
     let store = TaskStore::discover()?;
     let entry = store.load(&TaskId::new(id))?;
+    let status = match entry.task.status {
+        TaskStatus::Open => "OPEN",
+        TaskStatus::Closed => "CLOSED",
+    };
 
     println!("ID:       {}", entry.id.as_str());
     println!("Title:    {}", entry.task.title);
-    println!("Status:   {}", entry.task.status);
+    println!("Status:   {}", status);
     println!("Priority: {}", entry.task.priority);
     println!("Tags:     {}", entry.task.tags.join(", "));
+    println!();
+    println!("# Description");
     println!();
     println!("{}", entry.task.description);
 
     Ok(())
 }
 
-fn list_tasks(sort: Sort, reverse: bool, tags: &[String]) -> Result<()> {
+fn list_tasks(sort: Sort, reverse: bool, tags: &[String], closed: bool) -> Result<()> {
     let store = TaskStore::discover()?;
     let mut tasks = Vec::new();
 
@@ -122,6 +134,7 @@ fn list_tasks(sort: Sort, reverse: bool, tags: &[String]) -> Result<()> {
         let task_id = TaskId::new(id);
 
         if let Ok(task) = store.load(&task_id)
+            && (closed || task.task.status == TaskStatus::Open)
             && matches_tags(&task.task, tags)
         {
             tasks.push(task);
@@ -143,15 +156,19 @@ fn list_tasks(sort: Sort, reverse: bool, tags: &[String]) -> Result<()> {
     });
 
     for entry in tasks {
+        let status = match entry.task.status {
+            TaskStatus::Open => "OPEN",
+            TaskStatus::Closed => "CLOSED",
+        };
+
         println!(
             "{} [{}] [{}] {}",
             entry.id.as_str(),
-            entry.task.status,
+            status,
             entry.task.priority,
             entry.task.title
         );
     }
-
     Ok(())
 }
 

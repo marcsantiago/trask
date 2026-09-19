@@ -8,10 +8,25 @@ const TASKS_DIR: &str = "tasks";
 const TASK_FILE: &str = "TASK.md";
 const TRASK_FILE: &str = ".trask";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskStatus {
+    Open,
+    Closed,
+}
+
+impl TaskStatus {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Open => "OPEN",
+            Self::Closed => "CLOSED",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Task {
     pub title: String,
-    pub status: String,
+    pub status: TaskStatus,
     pub priority: u32,
     pub tags: Vec<String>,
     pub description: String,
@@ -27,6 +42,9 @@ pub enum ParseError {
 
     #[error("invalid priority")]
     InvalidPriority,
+
+    #[error("invalid status: {0}")]
+    InvalidStatus(String),
 }
 
 impl Task {
@@ -42,7 +60,7 @@ impl Task {
 
         expect_blank(&mut lines)?;
 
-        let status = parse_field(&mut lines, "- STATUS: ")?;
+        let status = parse_status(&parse_field(&mut lines, "- STATUS: ")?);
 
         let priority = parse_field(&mut lines, "- PRIORITY: ")?
             .parse::<u32>()
@@ -86,7 +104,11 @@ impl Task {
              - TAGS: {}\n\n\
              # Description\n\n\
              {}\n",
-            self.title, self.status, self.priority, tags, self.description,
+            self.title,
+            self.status.as_str(),
+            self.priority,
+            tags,
+            self.description,
         )
     }
 
@@ -98,6 +120,14 @@ impl Task {
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         fs::write(path, self.to_markdown())?;
         Ok(())
+    }
+}
+
+fn parse_status(value: &str) -> TaskStatus {
+    match value {
+        "OPEN" | "open" => TaskStatus::Open,
+        "CLOSED" | "closed" => TaskStatus::Closed,
+        _ => TaskStatus::Open,
     }
 }
 
