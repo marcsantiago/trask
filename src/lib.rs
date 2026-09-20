@@ -4,9 +4,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-const TASKS_DIR: &str = "tasks";
-const TASK_FILE: &str = "TASK.md";
-const TRASK_FILE: &str = ".trask";
+pub const TASKS_DIR: &str = "tasks";
+pub const TASK_FILE: &str = "TASK.md";
+pub const TRASK_FILE: &str = ".trask";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskStatus {

@@ -81,6 +81,53 @@ Or install the optimized release binary:
 cargo install --path .
 ```
 
+### Trask LSP
+
+Trask includes an optional language server for editor integration.
+
+Install the LSP binary with:
+
+```bash
+cargo install --path . --bin trask-lsp
+```
+
+Verify the installation:
+
+```bash
+trask-lsp
+```
+
+The language server communicates over standard input/output and is intended to be started by an editor.
+
+### Helix
+
+To use the Trask LSP with Helix, add the following to:
+
+```text
+~/.config/helix/languages.toml
+```
+
+```toml
+[language-server.trask-lsp]
+command = "trask-lsp"
+
+[[language]]
+name = "markdown"
+file-types = [
+    "md",
+    { glob = "TASK.md" },
+]
+language-servers = ["trask-lsp"]
+```
+
+This keeps `TASK.md` as Markdown while allowing the Trask LSP to provide task-specific completion and diagnostics.
+
+Restart Helix or restart the language server after changing the configuration:
+
+```text
+:lsp-restart
+```
+
 ### Requirements
 
 Trask is a Rust application and requires a current Rust toolchain with Cargo.
@@ -562,6 +609,8 @@ Title:    Fix ad request timeout
 Status:   OPEN
 Priority: 100
 Tags:     rtb, exchange, timeout
+
+# Description
 
 Investigate why ad requests occasionally exceed the 100ms timeout.
 ```
