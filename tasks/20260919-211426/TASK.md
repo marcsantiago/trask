@@ -1,6 +1,6 @@
 # integrate with helix
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 1
 - TAGS: feature
 
