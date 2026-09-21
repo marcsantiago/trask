@@ -38,6 +38,11 @@ enum Command {
         #[arg(short, long)]
         closed: bool,
     },
+
+    #[command(alias = "d", alias = "remove", alias = "r")]
+    Delete {
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -65,6 +70,7 @@ fn main() -> Result<()> {
             tag,
             closed,
         } => list_tasks(sort, reverse, &tag, closed)?,
+        Command::Delete { id } => delete_task(&id)?,
     }
 
     Ok(())
@@ -177,4 +183,10 @@ fn matches_tags(task: &Task, tags: &[String]) -> bool {
         || tags
             .iter()
             .all(|tag| task.tags.iter().any(|task_tag| task_tag == tag))
+}
+
+fn delete_task(id: &str) -> Result<()> {
+    let store = TaskStore::discover()?;
+    store.delete(&TaskId::new(id))?;
+    Ok(())
 }

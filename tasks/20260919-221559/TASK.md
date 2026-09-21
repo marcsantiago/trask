@@ -1,6 +1,6 @@
 # delete by task id
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 1
 - TAGS: feature
 

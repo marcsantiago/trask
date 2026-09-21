@@ -94,7 +94,7 @@ cargo install --path . --bin trask-lsp
 Verify the installation:
 
 ```bash
-trask-lsp
+which trask-lsp
 ```
 
 The language server communicates over standard input/output and is intended to be started by an editor.
@@ -615,6 +615,24 @@ Tags:     rtb, exchange, timeout
 Investigate why ad requests occasionally exceed the 100ms timeout.
 ```
 
+## Delete a Task
+
+Delete a task using its ID:
+
+```bash
+trask delete 20260919-154500
+```
+
+The `delete` command also has the following aliases:
+
+```bash
+trask d 20260919-154500
+trask remove 20260919-154500
+trask r 20260919-154500
+```
+
+The command removes the task associated with the specified task ID.
+
 ## Git
 
 Tasks are ordinary files, so they work naturally with Git.
@@ -653,6 +671,11 @@ trask s <id>
 
 trask list [OPTIONS]
 trask l [OPTIONS]
+
+trask delete <id>
+trask d <id>
+trask remove <id>
+trask r <id>
 ```
 
 ### `init`
@@ -739,6 +762,28 @@ trask l -t rust -s p -r
 
 trask l -c -t rust -s i
 trask l -c -t rust -t tooling -s p -r
+```
+
+### `delete`
+
+Delete a task:
+
+```bash
+trask delete <id>
+```
+
+Aliases:
+
+```bash
+trask d <id>
+trask remove <id>
+trask r <id>
+```
+
+Example:
+
+```bash
+trask d 20260919-154500
 ```
 
 ## Design

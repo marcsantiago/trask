@@ -243,6 +243,12 @@ impl TaskStore {
 
         Ok(())
     }
+
+    pub fn delete(&self, id: &TaskId) -> Result<()> {
+        let p = self.task_dir(id);
+        fs::remove_dir_all(p)?;
+        Ok(())
+    }
 }
 
 fn find_root(start: &Path) -> Result<PathBuf> {
