@@ -17,7 +17,7 @@ use tower_lsp::{
         TextDocumentSyncKind, Url,
     },
 };
-use trask::{Task, TaskId, TaskStore};
+use trask::{TASK_FILE, Task, TaskId, TaskStore};
 
 const STATUS_PREFIX: &str = "- STATUS: ";
 const TAGS_PREFIX: &str = "- TAGS: ";
@@ -47,6 +47,13 @@ impl Backend {
 
     fn document(&self, uri: &Url) -> Option<String> {
         self.documents.read().unwrap().get(uri).cloned()
+    }
+
+    fn is_task_document(uri: &Url) -> bool {
+        uri.to_file_path()
+            .ok()
+            .and_then(|path| path.file_name().map(|name| name == TASK_FILE))
+            .unwrap_or(false)
     }
 
     fn tags(&self) -> Vec<String> {
@@ -93,6 +100,10 @@ impl Backend {
             .publish_diagnostics(uri, diagnostics(text), version)
             .await;
     }
+
+    async fn clear_diagnostics(&self, uri: Url) {
+        self.client.publish_diagnostics(uri, Vec::new(), None).await;
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -136,8 +147,14 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
-        let text = params.text_document.text;
         let version = params.text_document.version;
+
+        if !Self::is_task_document(&uri) {
+            self.clear_diagnostics(uri).await;
+            return;
+        }
+
+        let text = params.text_document.text;
 
         self.documents
             .write()
@@ -150,6 +167,11 @@ impl LanguageServer for Backend {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         let version = params.text_document.version;
+
+        if !Self::is_task_document(&uri) {
+            self.clear_diagnostics(uri).await;
+            return;
+        }
 
         let Some(change) = params.content_changes.into_iter().last() else {
             return;
@@ -168,11 +190,16 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
 
         self.documents.write().unwrap().remove(&uri);
-        self.client.publish_diagnostics(uri, Vec::new(), None).await;
+        self.clear_diagnostics(uri).await;
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
+
+        if !Self::is_task_document(uri) {
+            return Ok(None);
+        }
+
         let position = params.text_document_position.position;
 
         let Some(text) = self.document(uri) else {
@@ -198,11 +225,10 @@ impl LanguageServer for Backend {
             return Ok(Some(CompletionResponse::Array(items)));
         }
 
-        if let Some(value) = tag_value(line, character) {
+        if tag_value(line, character).is_some() {
             let items = self
                 .tags()
                 .into_iter()
-                .filter(|tag| tag.starts_with(value))
                 .map(|tag| CompletionItem {
                     label: tag,
                     kind: Some(CompletionItemKind::VALUE),
