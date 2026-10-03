@@ -128,6 +128,37 @@ Restart Helix or restart the language server after changing the configuration:
 :lsp-restart
 ```
 
+### NeoVim (nvim)
+
+Create a lsp folder if one does not already exist and add a trask.lua file
+`nvim/lsp/trask.lua`
+
+Within that file add
+
+```lua
+return {
+    cmd = { "trask-lsp" },
+    filetypes = { "markdown" },
+
+    root_dir = function(bufnr, on_dir)
+        local filename = vim.api.nvim_buf_get_name(bufnr)
+
+        if vim.fn.fnamemodify(filename, ":t") ~= "TASK.md" then
+            return
+        end
+
+        local root = vim.fs.root(bufnr, { ".trask" })
+
+        if root then
+            on_dir(root)
+        end
+    end,
+}
+```
+
+Within the init.lua file add the line `vim.lsp.enable("trask")`
+
+
 ### Requirements
 
 Trask is a Rust application and requires a current Rust toolchain with Cargo.
