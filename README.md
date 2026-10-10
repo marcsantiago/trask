@@ -128,35 +128,75 @@ Restart Helix or restart the language server after changing the configuration:
 :lsp-restart
 ```
 
-### NeoVim (nvim)
+### Neovim (nvim)
 
-Create a lsp folder if one does not already exist and add a trask.lua file
-`nvim/lsp/trask.lua`
+Trask's language server can provide task-specific completion and diagnostics for Markdown task files, and go-to-definition for task IDs referenced from source code. Install the LSP binary first (see [Trask LSP](#trask-lsp)).
 
-Within that file add
+#### Configure the Trask LSP
+
+Create `~/.config/nvim/lsp/trask.lua`:
 
 ```lua
 return {
-    cmd = { "trask-lsp" },
-    filetypes = { "markdown" },
+  cmd = { "trask-lsp" },
 
-    root_dir = function(bufnr, on_dir)
-        local filename = vim.api.nvim_buf_get_name(bufnr)
+  filetypes = {
+    "markdown",
+    "go",
+    "rust",
+    "python",
+  },
 
-        if vim.fn.fnamemodify(filename, ":t") ~= "TASK.md" then
-            return
-        end
-
-        local root = vim.fs.root(bufnr, { ".trask" })
-
-        if root then
-            on_dir(root)
-        end
-    end,
+  root_dir = function(bufnr, on_dir)
+    local root = vim.fs.root(bufnr, { ".trask" })
+    if root then
+      on_dir(root)
+    end
+  end,
 }
 ```
 
-Within the init.lua file add the line `vim.lsp.enable("trask")`
+This starts `trask-lsp` for Markdown, Go, Rust, and Python buffers in a project containing a `.trask` marker. The marker is used to locate the Trask project root.
+
+Enable the configuration by adding the following line to `~/.config/nvim/init.lua`:
+
+```lua
+vim.lsp.enable("trask")
+```
+
+#### LazyVim: use `gd` for Trask task IDs
+
+When using LazyVim, create `~/.config/nvim/lua/plugins/trask-gd.lua`:
+
+```lua
+return {
+  {
+    "neovim/nvim-lspconfig",
+    opts = {
+      servers = {
+        ["*"] = {
+          keys = {
+            {
+              "gd",
+              function()
+                Snacks.picker.lsp_definitions()
+              end,
+              desc = "Goto Definition (includes Trask tasks)",
+              has = "definition",
+            },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+With `trask-lsp` attached to the source buffer and advertising go-to-definition support, place the cursor on a task ID in a code comment and press `gd` to open the corresponding `TASK.md`. For other symbols, the Snacks picker continues to provide the normal LSP definition results.
+
+For example, a comment containing `TODO: 20260919-154500` can link to `tasks/20260919-154500/TASK.md`.
+
+Restart Neovim after changing the configuration. If the LSP was already running, restart it as well.
 
 
 ### Requirements

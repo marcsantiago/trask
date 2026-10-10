@@ -12,8 +12,9 @@ use tower_lsp::{
     lsp_types::{
         CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
         CompletionResponse, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
-        DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, InitializeResult,
-        InitializedParams, Position, Range, ServerCapabilities, TextDocumentSyncCapability,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
+        GotoDefinitionResponse, InitializeParams, InitializeResult, InitializedParams, Location,
+        OneOf, Position, Range, ServerCapabilities, TextDocumentSyncCapability,
         TextDocumentSyncKind, Url,
     },
 };
@@ -21,6 +22,7 @@ use trask::{TASK_FILE, Task, TaskId, TaskStore};
 
 const STATUS_PREFIX: &str = "- STATUS: ";
 const TAGS_PREFIX: &str = "- TAGS: ";
+const TASK_ID_LEN: usize = 15;
 
 struct Backend {
     client: Client,
@@ -122,6 +124,7 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+                definition_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![":".to_string(), ",".to_string()]),
                     ..Default::default()
@@ -148,18 +151,18 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let version = params.text_document.version;
+        let text = params.text_document.text;
+
+        // Store every open document so definitions work in source files too.
+        self.documents
+            .write()
+            .unwrap()
+            .insert(uri.clone(), text.clone());
 
         if !Self::is_task_document(&uri) {
             self.clear_diagnostics(uri).await;
             return;
         }
-
-        let text = params.text_document.text;
-
-        self.documents
-            .write()
-            .unwrap()
-            .insert(uri.clone(), text.clone());
 
         self.publish_diagnostics(uri, &text, Some(version)).await;
     }
@@ -168,19 +171,20 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         let version = params.text_document.version;
 
-        if !Self::is_task_document(&uri) {
-            self.clear_diagnostics(uri).await;
-            return;
-        }
-
         let Some(change) = params.content_changes.into_iter().last() else {
             return;
         };
 
+        // TextDocumentSyncKind::FULL means change.text is the full document.
         self.documents
             .write()
             .unwrap()
             .insert(uri.clone(), change.text.clone());
+
+        if !Self::is_task_document(&uri) {
+            self.clear_diagnostics(uri).await;
+            return;
+        }
 
         self.publish_diagnostics(uri, &change.text, Some(version))
             .await;
@@ -191,6 +195,43 @@ impl LanguageServer for Backend {
 
         self.documents.write().unwrap().remove(&uri);
         self.clear_diagnostics(uri).await;
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let text_document_position = params.text_document_position_params;
+        let uri = text_document_position.text_document.uri;
+        let position = text_document_position.position;
+
+        let Some(text) = self.document(&uri) else {
+            return Ok(None);
+        };
+
+        let Some(line) = text.lines().nth(position.line as usize) else {
+            return Ok(None);
+        };
+
+        // LSP character positions use UTF-16 code units.
+        let Some(id) = task_id_at(line, position.character as usize) else {
+            return Ok(None);
+        };
+
+        let path = self.root().join("tasks").join(id).join(TASK_FILE);
+
+        if !path.is_file() {
+            return Ok(None);
+        }
+
+        let Ok(task_uri) = Url::from_file_path(path) else {
+            return Ok(None);
+        };
+
+        Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
+            task_uri,
+            Range::new(Position::new(0, 0), Position::new(0, 0)),
+        ))))
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
@@ -241,6 +282,47 @@ impl LanguageServer for Backend {
 
         Ok(None)
     }
+}
+
+/// Returns a Trask task ID when the cursor is positioned on one.
+///
+/// Expected format: YYYYMMDD-HHMMSS.
+fn task_id_at(line: &str, cursor: usize) -> Option<&str> {
+    let bytes = line.as_bytes();
+
+    if bytes.len() < TASK_ID_LEN {
+        return None;
+    }
+
+    for start in 0..=bytes.len() - TASK_ID_LEN {
+        let end = start + TASK_ID_LEN;
+        let candidate = &bytes[start..end];
+
+        let valid = candidate[..8].iter().all(|b| b.is_ascii_digit())
+            && candidate[8] == b'-'
+            && candidate[9..].iter().all(|b| b.is_ascii_digit());
+
+        if !valid {
+            continue;
+        }
+
+        // Do not match an ID embedded in a larger ASCII identifier.
+        if start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
+            continue;
+        }
+
+        if end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
+            continue;
+        }
+
+        let start_utf16 = line[..start].encode_utf16().count();
+
+        if (start_utf16..start_utf16 + TASK_ID_LEN).contains(&cursor) {
+            return line.get(start..end);
+        }
+    }
+
+    None
 }
 
 fn diagnostics(text: &str) -> Vec<Diagnostic> {
