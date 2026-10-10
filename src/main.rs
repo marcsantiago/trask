@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
+use arboard::Clipboard;
 use clap::{Parser, Subcommand, ValueEnum};
 use trask::{Task, TaskEntry, TaskId, TaskStatus, TaskStore};
 
@@ -101,9 +102,10 @@ fn new_task(title: &str) -> Result<()> {
         tags: Vec::new(),
         description: String::new(),
     };
-
+    let clip_id = id.clone();
     store.save(&TaskEntry { id, task })?;
-
+    let mut clipboard = Clipboard::new()?;
+    clipboard.set_text(clip_id.as_str())?;
     Ok(())
 }
 
@@ -204,7 +206,6 @@ struct GistEntry {
 
 fn gist() -> Result<()> {
     let mut summary: HashMap<String, GistEntry> = HashMap::new();
-
     let store = TaskStore::discover()?;
 
     for entry in std::fs::read_dir(store.tasks_dir())? {

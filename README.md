@@ -252,7 +252,8 @@ trask add "Fix ad request timeout"
 trask a "Fix ad request timeout"
 ```
 
-Trask automatically generates a unique timestamp-based task ID.
+Trask automatically generates a unique timestamp-based task ID. If possible the ID created is also copied to the 
+system clipboard automatically.
 
 For example:
 
