@@ -703,6 +703,9 @@ trask s <id>
 trask list [OPTIONS]
 trask l [OPTIONS]
 
+trask gist
+trask g
+
 trask delete <id>
 trask d <id>
 trask remove <id>
@@ -793,6 +796,15 @@ trask l -t rust -s p -r
 
 trask l -c -t rust -s i
 trask l -c -t rust -t tooling -s p -r
+```
+
+### `gist` / `g`
+
+Group tasks by status and tags:
+
+```bash
+trask gist
+trask g
 ```
 
 ### `delete`

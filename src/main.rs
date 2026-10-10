@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use trask::{Task, TaskEntry, TaskId, TaskStatus, TaskStore};
@@ -43,6 +45,9 @@ enum Command {
     Delete {
         id: String,
     },
+
+    #[command(alias = "g", alias = "gist")]
+    Gist,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -71,6 +76,7 @@ fn main() -> Result<()> {
             closed,
         } => list_tasks(sort, reverse, &tag, closed)?,
         Command::Delete { id } => delete_task(&id)?,
+        Command::Gist => gist()?,
     }
 
     Ok(())
@@ -188,5 +194,44 @@ fn matches_tags(task: &Task, tags: &[String]) -> bool {
 fn delete_task(id: &str) -> Result<()> {
     let store = TaskStore::discover()?;
     store.delete(&TaskId::new(id))?;
+    Ok(())
+}
+
+#[derive(Default)]
+struct GistEntry {
+    count: usize,
+}
+
+fn gist() -> Result<()> {
+    let mut summary: HashMap<String, GistEntry> = HashMap::new();
+
+    let store = TaskStore::discover()?;
+
+    for entry in std::fs::read_dir(store.tasks_dir())? {
+        let entry = entry?;
+
+        if !entry.path().is_dir() {
+            continue;
+        }
+
+        let Some(id) = entry.file_name().to_str().map(String::from) else {
+            continue;
+        };
+
+        let task_id = TaskId::new(id);
+
+        if let Ok(task) = store.load(&task_id) {
+            let entry = summary
+                .entry(task.task.status.as_str().to_string())
+                .or_default();
+
+            entry.count += 1;
+        }
+    }
+
+    println!("Gist:");
+    for (status, entry) in &summary {
+        println!("{status}: {}", entry.count);
+    }
     Ok(())
 }
