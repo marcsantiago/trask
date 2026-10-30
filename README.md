@@ -4,9 +4,17 @@ A simple, Git-friendly task tracker that stores tasks as Markdown files.
 
 ## Installation
 
-### From Source
+Trask is a Rust application and requires a Rust toolchain with Cargo. Check that they are installed:
 
-Trask can be built and installed using Cargo.
+```bash
+rustc --version
+cargo --version
+```
+
+If you need to install Rust, use [rustup](https://rustup.rs/).
+
+<details>
+<summary><strong>Install the CLI from source</strong></summary>
 
 Clone the repository:
 
@@ -15,13 +23,11 @@ git clone <repository-url>
 cd trask
 ```
 
-Install Trask:
+Install the CLI:
 
 ```bash
-cargo install --path .
+cargo install --path . --bin trask
 ```
-
-This installs the `trask` executable into Cargo's binary directory.
 
 Verify the installation:
 
@@ -29,124 +35,133 @@ Verify the installation:
 trask --help
 ```
 
-If `trask` is not found after installation, make sure Cargo's binary directory is in your `PATH`:
+Cargo installs binaries into `$HOME/.cargo/bin` by default. Add that directory to your `PATH` if necessary:
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
-### Build Without Installing
+</details>
 
-To build Trask without installing it:
+<details>
+<summary><strong>Build without installing</strong></summary>
+
+Build the debug binaries:
 
 ```bash
 cargo build
 ```
 
-The debug executable will be available at:
+The executables are available at:
 
 ```text
 target/debug/trask
+target/debug/trask-lsp
 ```
 
-Run it directly with:
+Run the CLI directly:
 
 ```bash
 cargo run -- --help
 ```
 
-### Release Build
+</details>
 
-For an optimized release build:
+<details>
+<summary><strong>Build and install a release binary</strong></summary>
+
+Build optimized binaries:
 
 ```bash
 cargo build --release
 ```
 
-The release executable will be:
+The executables are available at:
 
 ```text
 target/release/trask
+target/release/trask-lsp
 ```
 
-You can run it directly:
+Install the optimized CLI:
 
 ```bash
-./target/release/trask --help
+cargo install --path . --bin trask
 ```
 
-Or install the optimized release binary:
+</details>
 
-```bash
-cargo install --path .
-```
+## Language Server (LSP)
 
-### Trask LSP
+Trask includes an optional language server, `trask-lsp`, for editor integration. It provides:
 
-Trask includes an optional language server for editor integration.
+- `OPEN` / `CLOSED` status completion and validation.
+- Completion suggestions based on tags used by existing tasks.
+- Diagnostics for invalid task metadata in `TASK.md` files.
+- Document formatting for valid task files.
+- Go-to-definition for task IDs referenced from source files or other documents.
 
-Install the LSP binary with:
+The LSP communicates over standard input/output and is started by the editor.
+
+Install it from the Trask repository:
 
 ```bash
 cargo install --path . --bin trask-lsp
 ```
 
-Verify the installation:
+Verify that it is on your `PATH`:
 
 ```bash
 which trask-lsp
 ```
 
-The language server communicates over standard input/output and is intended to be started by an editor.
+### Editor setup
 
-### Helix
+<details>
+<summary><strong>Helix</strong></summary>
 
-To use the Trask LSP with Helix, add the following to:
-
-```text
-~/.config/helix/languages.toml
-```
+Add the LSP definition to `~/.config/helix/languages.toml`:
 
 ```toml
 [language-server.trask-lsp]
 command = "trask-lsp"
-
-[[language]]
-name = "markdown"
-file-types = [
-    "md",
-    { glob = "TASK.md" },
-]
-language-servers = ["trask-lsp"]
 ```
 
-This keeps `TASK.md` as Markdown while allowing the Trask LSP to provide task-specific completion and diagnostics.
+Add `TASK.md` to the existing Markdown language's `file-types`, and add `trask-lsp` to its `language-servers` list. For example, keeping the other Markdown servers shown here:
 
-Restart Helix or restart the language server after changing the configuration:
+```toml
+[[language]]
+name = "markdown"
+file-types = ["md", { glob = "TASK.md" }]
+language-servers = ["marksman", "markdown-oxide", "typos", "trask-lsp"]
+```
+
+Keep any other Markdown language servers you already use in that list. This configuration keeps `TASK.md` identified as Markdown, so normal Markdown highlighting remains enabled.
+
+The Trask LSP only publishes task diagnostics and offers task-field completion/formatting for files named `TASK.md`. It can also be added to source-language server lists when you want task-ID go-to-definition from code comments. Append `"trask-lsp"` to the existing `language-servers` arrays for the languages where you want that feature (for example Go, Rust, or Python).
+
+After changing the configuration, restart Helix or run:
 
 ```text
 :lsp-restart
 ```
 
-### Neovim (nvim)
+Useful commands:
 
-Trask's language server can provide task-specific completion and diagnostics for Markdown task files, and go-to-definition for task IDs referenced from source code. Install the LSP binary first (see [Trask LSP](#trask-lsp)).
+- `:format` formats a valid `TASK.md` using Trask's canonical Markdown format.
+- `gd` jumps to a task file when the cursor is on a Trask task ID and `trask-lsp` is attached to that language.
 
-#### Configure the Trask LSP
+</details>
+
+<details>
+<summary><strong>Neovim 0.11+</strong></summary>
 
 Create `~/.config/nvim/lsp/trask.lua`:
 
 ```lua
 return {
   cmd = { "trask-lsp" },
-
-  filetypes = {
-    "markdown",
-    "go",
-    "rust",
-    "python",
-  },
-
+  filetypes = { "markdown", "go", "rust", "python" },
   root_dir = function(bufnr, on_dir)
     local root = vim.fs.root(bufnr, { ".trask" })
     if root then
@@ -156,12 +171,18 @@ return {
 }
 ```
 
-This starts `trask-lsp` for Markdown, Go, Rust, and Python buffers in a project containing a `.trask` marker. The marker is used to locate the Trask project root.
-
-Enable the configuration by adding the following line to `~/.config/nvim/init.lua`:
+Enable the LSP by adding this to `~/.config/nvim/init.lua`:
 
 ```lua
 vim.lsp.enable("trask")
+```
+
+The `.trask` marker is used to locate the project root. Trask task diagnostics, completion, and formatting are limited to files named `TASK.md`. The server can also inspect open Markdown, Go, Rust, and Python documents for task IDs to support go-to-definition.
+
+Format a task file with:
+
+```vim
+:lua vim.lsp.buf.format()
 ```
 
 #### LazyVim: use `gd` for Trask task IDs
@@ -192,25 +213,82 @@ return {
 }
 ```
 
-With `trask-lsp` attached to the source buffer and advertising go-to-definition support, place the cursor on a task ID in a code comment and press `gd` to open the corresponding `TASK.md`. For other symbols, the Snacks picker continues to provide the normal LSP definition results.
+With `trask-lsp` attached to the source buffer, place the cursor on a task ID in a code comment and press `gd` to open the corresponding `TASK.md`. For other symbols, the Snacks picker continues to show normal LSP definition results.
 
 For example, a comment containing `TODO: 20260919-154500` can link to `tasks/20260919-154500/TASK.md`.
 
-Restart Neovim after changing the configuration. If the LSP was already running, restart it as well.
+Restart Neovim and its LSP after changing the configuration.
 
+</details>
 
-### Requirements
+<details>
+<summary><strong>PyCharm (LSP4IJ)</strong></summary>
 
-Trask is a Rust application and requires a current Rust toolchain with Cargo.
+PyCharm can use `trask-lsp` through [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij), a JetBrains plugin that lets you configure external Language Server Protocol servers without writing a dedicated PyCharm plugin.
 
-Check that Rust and Cargo are installed:
+#### Install LSP4IJ
 
-```bash
-rustc --version
-cargo --version
-```
+1. Open **Settings → Plugins → Marketplace**.
+2. Search for **LSP4IJ** by Red Hat and install it.
+3. Restart PyCharm.
 
-If you need to install Rust, use `rustup`.
+#### Register `trask-lsp`
+
+1. Open **Settings → Languages & Frameworks → Language Servers**.
+2. Add a **User-defined language server**.
+3. In the **Server** tab, configure:
+
+   | Setting | Value                            |
+   | ------- | -------------------------------- |
+   | Name    | `Trask`                          |
+   | Command | The absolute path to `trask-lsp` |
+
+   Find the executable path from a terminal with:
+
+   ```bash
+   which trask-lsp
+   ```
+
+   Use the returned path in PyCharm. Using an absolute path avoids relying on the environment inherited by the IDE.
+
+4. In the **Mappings** tab, add a file-name pattern mapping:
+
+   | Setting           | Value      |
+   | ----------------- | ---------- |
+   | File name pattern | `TASK.md`  |
+   | Language ID       | `markdown` |
+
+   Use a file-name pattern mapping rather than creating a custom file type. This keeps `TASK.md` associated with Markdown so PyCharm's Markdown highlighting remains available.
+
+5. In the **Workspace Folders** tab, configure marker-based discovery with:
+
+   ```json
+   {
+     "markers": [".trask"]
+   }
+   ```
+
+   LSP4IJ walks up from the opened file and uses the directory containing `.trask` as the workspace folder. This lets Trask find the project's `tasks/` directory and offer existing tags.
+
+6. Save the server configuration. Open a `TASK.md` file inside an initialized Trask project.
+
+#### Optional: task-ID go-to-definition from source files
+
+The Trask LSP can also resolve task IDs in source files. In the **Mappings** tab, add mappings for the source languages you use, with their corresponding language IDs:
+
+| PyCharm language / file type | Language ID |
+| ---------------------------- | ----------- |
+| Go                           | `go`        |
+| Rust                         | `rust`      |
+| Python                       | `python`    |
+
+Only add mappings for languages supported by your PyCharm installation. These mappings allow the LSP to inspect those open documents for task IDs; task-specific diagnostics and field completion remain limited to files named `TASK.md`.
+
+#### Formatting
+
+For a valid `TASK.md`, use PyCharm's **Code → Reformat Code** or **Reformat File** action. LSP4IJ routes the formatting request to Trask, which normalizes the task metadata and description heading.
+
+</details>
 
 ## Inspiration
 
@@ -228,36 +306,27 @@ This project is an independent Rust implementation with its own design and imple
 
 Thanks to **Alexey Kutepov (Tsoding)** for the original idea and inspiration.
 
-## Layout
+## Project layout
 
-Tasks live in a `tasks/` directory at the root of your project.
+Tasks live in a `tasks/` directory at the root of your project. Trask uses a `.trask` marker file to identify the project root, so commands can be run from the project root or from a subdirectory.
 
-Trask uses a `.trask` marker file to identify the project root. Commands can therefore be run from the project root or from a subdirectory within the project.
+Each task gets its own directory named with a unique task ID. Every task directory contains a `TASK.md` file and can contain attachments such as screenshots or other files.
 
-Each task gets its own directory named with its unique task ID. Every task directory contains a mandatory `TASK.md` file.
-
-Task IDs are generated using the UTC timestamp at creation time:
-
-```text
-YYYYMMDD-HHMMSS
-```
-
-For example:
+Task IDs use the UTC timestamp format `YYYYMMDD-HHMMSS`:
 
 ```text
 project/
 ├── .trask
 ├── tasks/
 │   ├── 20260919-154500/
-│   │   └── TASK.md
+│   │   ├── TASK.md
+│   │   └── screenshot.png
 │   └── 20260919-160200/
 │       └── TASK.md
 └── ...
 ```
 
-Task directories can also contain attachments such as screenshots or other files.
-
-## Initialize
+## Initialize a project
 
 Run `init` from the root of your project:
 
@@ -265,18 +334,9 @@ Run `init` from the root of your project:
 trask init
 ```
 
-This creates:
+This creates the `.trask` marker and `tasks/` directory. Running `init` on an already initialized project returns an error.
 
-```text
-.trask
-tasks/
-```
-
-The `.trask` file identifies the project root. Once initialized, Trask commands can also be run from subdirectories.
-
-Running `init` on an already initialized project will return an error.
-
-## Create a Task
+## Create a task
 
 Create a task with:
 
@@ -284,7 +344,7 @@ Create a task with:
 trask new "Fix ad request timeout"
 ```
 
-The `new` command also has the following aliases:
+Aliases:
 
 ```bash
 trask n "Fix ad request timeout"
@@ -292,16 +352,7 @@ trask add "Fix ad request timeout"
 trask a "Fix ad request timeout"
 ```
 
-Trask automatically generates a unique timestamp-based task ID. If possible the ID created is also copied to the 
-system clipboard automatically.
-
-For example:
-
-```text
-tasks/
-└── 20260919-154500/
-    └── TASK.md
-```
+Trask generates a timestamp-based task ID and copies the new ID to the system clipboard. The task is created with status `OPEN`, no tags, an empty description, and the special unprioritized priority value (`4294967295`).
 
 The generated `TASK.md` looks like:
 
@@ -313,363 +364,208 @@ The generated `TASK.md` looks like:
 - TAGS:
 
 # Description
-
 ```
 
-The default status is `OPEN`.
+Edit `TASK.md` directly to add tags, set a priority, and write the description.
 
-The default priority is `u32::MAX` (`4294967295`), which causes newly created tasks to appear first when using the default priority sort.
+## Task format and parsing
 
-Edit the `TASK.md` file directly to add or modify the task description.
-
-## Task Format
-
-Each task contains a `TASK.md` file with the following format:
-
-```markdown
-# Task title
-
-- STATUS: OPEN
-- PRIORITY: 50
-- TAGS: rtb, exchange, timeout
-
-# Description
-
-Task description goes here.
-
-The description can contain normal Markdown.
-```
-
-### Status
-
-`STATUS` describes whether the task is open or closed.
-
-```text
-OPEN
-CLOSED
-```
-
-Trask represents these statuses internally using the `TaskStatus` enum.
-
-A newly created task always starts with:
-
-```text
-OPEN
-```
-
-To close a task, edit its `TASK.md`:
-
-```markdown
-- STATUS: CLOSED
-```
-
-When using `trask list`, closed tasks are excluded by default.
-
-Use `--closed` or `-c` to include closed tasks.
-
-### Priority
-
-`PRIORITY` is an unsigned integer.
-
-```text
-- PRIORITY: 50
-```
-
-The default priority for newly created tasks is `4294967295` (`u32::MAX`).
-
-When listing tasks, priority is sorted in descending order by default, so higher-priority tasks appear first.
-
-### Tags
-
-`TAGS` is a comma-separated list:
-
-```text
-- TAGS: rust, helix, tooling
-```
-
-Whitespace around tags is ignored.
-
-An empty tag list is valid:
-
-```text
-- TAGS:
-```
-
-### Description
-
-The `# Description` heading marks the beginning of the task description:
-
-```markdown
-# Description
-
-Task description goes here.
-```
-
-Everything after the `# Description` heading is treated as the task description and may contain normal Markdown.
-
-## List Tasks
-
-List open tasks:
-
-```bash
-trask list
-```
-
-You can also use the shorthand:
-
-```bash
-trask l
-```
-
-By default, closed tasks are excluded and tasks are sorted by priority in descending order.
-
-Example:
-
-```text
-20260919-160200 [OPEN] [4294967295] Add Helix integration
-20260919-154500 [OPEN] [100] Fix ad request timeout
-```
-
-A closed task such as:
-
-```text
-20260919-161030 [CLOSED] [10] Initial project setup
-```
-
-is not shown by default.
-
-### Include Closed Tasks
-
-Use `--closed` or `-c` to include closed tasks:
-
-```bash
-trask list --closed
-```
-
-or:
-
-```bash
-trask l -c
-```
-
-Example:
-
-```text
-20260919-160200 [OPEN] [4294967295] Add Helix integration
-20260919-154500 [OPEN] [100] Fix ad request timeout
-20260919-161030 [CLOSED] [10] Initial project setup
-```
-
-The `--closed` option does not mean "show only closed tasks." It means **include closed tasks in the results**.
-
-### Sorting
-
-Use `--sort` or `-s` to choose the sort order:
-
-```bash
-trask list --sort priority
-trask list -s priority
-```
-
-The available sort values are:
-
-| Sort     | Long form  | Short value |
-| -------- | ---------- | ----------- |
-| Priority | `priority` | `p`         |
-| ID       | `id`       | `i`         |
-| Title    | `title`    | `t`         |
-
-#### Sort by Priority
-
-Priority is the default sort:
-
-```bash
-trask list --sort priority
-trask list --sort p
-trask l -s p
-```
-
-Higher priorities appear first.
-
-#### Sort by ID
-
-Sort tasks by their timestamp-based ID:
-
-```bash
-trask list --sort id
-trask list --sort i
-trask l -s i
-```
-
-Example:
-
-```text
-20260919-154500 [OPEN] [100] Fix ad request timeout
-20260919-160200 [OPEN] [4294967295] Add Helix integration
-20260919-161030 [CLOSED] [10] Initial project setup
-```
-
-#### Sort by Title
-
-Sort tasks alphabetically by title:
-
-```bash
-trask list --sort title
-trask list --sort t
-trask l -s t
-```
-
-### Reverse the Sort
-
-Use `--reverse` or `-r` to reverse whichever sort is selected:
-
-```bash
-trask list --reverse
-trask list -r
-```
-
-For example:
-
-```bash
-trask l -s p -r
-```
-
-reverses the default priority ordering.
-
-You can also combine reverse with the other sort options:
-
-```bash
-trask l -s i -r
-trask l -s t -r
-```
-
-### Filter by Tag
-
-Use `--tag` or `-t` to show only tasks containing a specific tag:
-
-```bash
-trask list --tag rust
-```
-
-or:
-
-```bash
-trask l -t rust
-```
-
-For example, given:
+A canonical task file looks like:
 
 ```markdown
 # Fix ad request timeout
 
 - STATUS: OPEN
-- PRIORITY: 100
-- TAGS: rtb, exchange
+- PRIORITY: 1
+- TAGS: rtb, exchange, timeout
 
 # Description
 
 Investigate why ad requests occasionally exceed the 100ms timeout.
 ```
 
+The fields are:
+
+| Field           | Meaning                                              | Required |
+| --------------- | ---------------------------------------------------- | -------- |
+| Title           | The first Markdown heading (`# <title>`)             | Yes      |
+| `STATUS`        | `OPEN` or `CLOSED`                                   | Yes      |
+| `PRIORITY`      | An unsigned integer                                  | Yes      |
+| `TAGS`          | Comma-separated tags                                 | No       |
+| `# Description` | Optional section heading before the description body | No       |
+
+### Flexible parsing
+
+Trask accepts flexible spacing around metadata keys and colons, and metadata keys/status values are case-insensitive. `STATUS` and `PRIORITY` are required; tags and description content can be omitted.
+
+The following are all valid:
+
 ```markdown
-# Add Rust parser
+# Fix timeout
 
-- STATUS: OPEN
-- PRIORITY: 50
-- TAGS: rust, tooling
+- STATUS : opened
+- PRIORITY: 1
+- TAGS : foo, bar ,
 
-# Description
-
-Improve the Markdown parser.
+Investigate the timeout.
 ```
 
 ```markdown
-# Update dashboard
+# Fix timeout
 
-- STATUS: OPEN
-- PRIORITY: 25
-- TAGS: frontend, dashboard
-
-# Description
-
-Update the dashboard UI.
+- PRIORITY: 1
+- STATUS: o
 ```
 
-then:
+The description heading is optional. Without it, the text following the metadata is treated as the description. The description body itself can also be empty.
 
-```bash
-trask l -t rust
-```
-
-returns only:
+Tag values are split on commas, trimmed individually, and empty values are ignored. For example:
 
 ```text
-20260919-160200 [OPEN] [50] Add Rust parser
+foo,     bar   ,
 ```
 
-### Filter by Multiple Tags
+is parsed as two tags: `foo` and `bar`. Whitespace inside a tag is preserved, so `ad exchange` remains one tag.
 
-The `--tag` / `-t` option can be specified multiple times:
+### Status values
+
+The parser accepts these status spellings, regardless of capitalization:
+
+| Accepted values        | Stored status        | Canonical output |
+| ---------------------- | -------------------- | ---------------- |
+| `open`, `opened`, `o`  | `TaskStatus::Open`   | `OPEN`           |
+| `closed`, `close`, `c` | `TaskStatus::Closed` | `CLOSED`         |
+
+A new task starts as `OPEN`. To close a task, change its `STATUS` field to `CLOSED` (or use an accepted alias and format the file).
+
+### Formatting
+
+The LSP provides document formatting for valid `TASK.md` files. Formatting normalizes the file to Trask's canonical layout:
+
+- Standardizes metadata field names and spacing.
+- Converts accepted status aliases to `OPEN` or `CLOSED`.
+- Normalizes comma-separated tags to `foo, bar` and removes empty tag entries.
+- Adds the `# Description` heading, even when the original file omitted it.
+- Preserves the description body as Markdown.
+
+Formatting does not invent missing required values. If the title, status, or priority is invalid or missing, the formatter leaves the document unchanged.
+
+## Priority
+
+Priority uses an unsigned integer. **Lower numbers mean higher priority**, like `P1`, `P2`, and `P3`:
+
+| Priority     | Meaning                                | Sort order                            |
+| ------------ | -------------------------------------- | ------------------------------------- |
+| `1`          | Highest assigned priority              | First among numbered priorities       |
+| `2`          | Next priority                          | After `1`                             |
+| `3`          | Next priority                          | After `2`                             |
+| `10`         | Lower priority                         | After `3`                             |
+| `4294967295` | Unprioritized (reserved special value) | Always at the top in priority sorting |
+
+New tasks use `4294967295` to indicate that they have not yet been assigned a priority. This special value sorts ahead of numbered priorities so new tasks are easy to find. Once you assign a number such as `1`, the task moves into the normal priority order.
+
+Priority sorting is the default. `--reverse` reverses the order of numbered priorities while keeping unprioritized tasks at the top.
+
+## List tasks
+
+List open tasks:
 
 ```bash
-trask l -t rust -t tooling
+trask list
+trask l
 ```
 
-When multiple tags are specified, a task must contain **all** of the requested tags.
+By default, closed tasks are excluded and tasks are sorted by priority: unprioritized tasks first, followed by numbered priorities from lowest number to highest number.
 
-For example:
+Example:
+
+```text
+20260919-160200 [OPEN] [4294967295] Add Helix integration
+20260919-154500 [OPEN] [1] Fix ad request timeout
+20260919-161030 [OPEN] [2] Add task references
+```
+
+### Include closed tasks
+
+Use `--closed` or `-c` to include closed tasks in the results. It does not show only closed tasks:
 
 ```bash
-trask l -t rust -t rtb
+trask list --closed
+trask l -c
 ```
 
-only returns tasks containing both `rust` and `rtb`.
+### Sort tasks
 
-### Combine Closed Tasks, Filtering, and Sorting
+Use `--sort` or `-s`:
 
-All list options can be combined.
+| Sort     | Long value | Alias |
+| -------- | ---------- | ----- |
+| Priority | `priority` | `p`   |
+| ID       | `id`       | `i`   |
+| Title    | `title`    | `t`   |
 
-Include closed tasks and sort by priority:
+Examples:
 
 ```bash
-trask l -c -s p
+trask l -s p
+trask l --sort priority
+trask l -s i
+trask l -s t
 ```
 
-Include closed tasks and reverse the priority sort:
+Priority sorts numbered tasks in ascending numeric order, with unprioritized tasks first. ID sorts by timestamp-based ID. Title sorts alphabetically.
+
+### Reverse the sort
+
+Use `--reverse` or `-r`:
 
 ```bash
-trask l -c -s p -r
+trask l -r
+trask l -s p -r
+trask l -s i -r
+trask l -s t -r
 ```
 
-Show only Rust tasks and sort by title:
+When sorting by priority, `-r` reverses the numbered priorities but leaves unprioritized tasks at the top.
+
+### Filter by tag
+
+Use `--tag` or `-t`:
 
 ```bash
-trask l -t rust -s t
+trask list --tag bug
+trask l -t bug
 ```
 
-Show Rust tasks, including closed tasks, sorted by ID:
+Tag matching is case-insensitive, so `bug`, `Bug`, and `BUG` match the same tag.
+
+You can specify multiple tags. A task must contain **all** requested tags (AND matching):
 
 ```bash
-trask l -c -t rust -s i
+trask l -t bug -t rtb
 ```
 
-Show Rust and tooling tasks, including closed tasks, sorted by reverse priority:
+### Combine filters and sorting
+
+List options can be combined:
 
 ```bash
-trask l -c -t rust -t tooling -s p -r
+# Include closed tasks, filter by tag, and sort by priority.
+trask l -c -t bug -s p
+
+# Reverse the numbered priority order.
+trask l -t rust -s p -r
+
+# Match both tags and sort by title.
+trask l -t rust -t tooling -s t
 ```
 
-## Show a Task
+## Show a task
 
 Display a task using its ID:
 
 ```bash
 trask show 20260919-154500
-```
-
-The `show` command also has the shorthand alias:
-
-```bash
 trask s 20260919-154500
 ```
 
@@ -679,15 +575,15 @@ Example:
 ID:       20260919-154500
 Title:    Fix ad request timeout
 Status:   OPEN
-Priority: 100
+Priority: 1
 Tags:     rtb, exchange, timeout
-
-# Description
 
 Investigate why ad requests occasionally exceed the 100ms timeout.
 ```
 
-## Delete a Task
+The description is printed as entered; headings such as `# Background` remain part of the description. The structural `# Description` marker is not printed as an extra heading.
+
+## Delete a task
 
 Delete a task using its ID:
 
@@ -695,7 +591,7 @@ Delete a task using its ID:
 trask delete 20260919-154500
 ```
 
-The `delete` command also has the following aliases:
+Aliases:
 
 ```bash
 trask d 20260919-154500
@@ -703,229 +599,85 @@ trask remove 20260919-154500
 trask r 20260919-154500
 ```
 
-The command removes the task associated with the specified task ID.
+Delete removes the task's entire directory, including `TASK.md` and any attachments stored alongside it.
+
+## Gist
+
+Show the number of tasks in each status:
+
+```bash
+trask gist
+trask g
+```
+
+Example shape:
+
+```text
+Gist:
+OPEN: <count>
+CLOSED: <count>
+```
+
+## Task IDs in source code
+
+Task IDs use the format `YYYYMMDD-HHMMSS`. When `trask-lsp` is attached to a source file, placing the cursor on a task ID and invoking go-to-definition opens the matching task file:
+
+```text
+TODO: 20260919-154500
+```
+
+The target is:
+
+```text
+tasks/20260919-154500/TASK.md
+```
+
+The LSP supports this navigation from documents it has open. For Helix, add `trask-lsp` to the relevant source language's `language-servers` list. The Neovim configuration above attaches it to Markdown, Go, Rust, and Python buffers in a Trask project.
+
+## Commands
+
+| Command             | Aliases            | Description                                    |
+| ------------------- | ------------------ | ---------------------------------------------- |
+| `trask init`        | —                  | Initialize a Trask project                     |
+| `trask new <title>` | `n`, `add`, `a`    | Create a task and copy its ID to the clipboard |
+| `trask show <id>`   | `s`                | Show a task                                    |
+| `trask list`        | `l`                | List tasks with optional filters and sorting   |
+| `trask delete <id>` | `d`, `remove`, `r` | Delete a task directory                        |
+| `trask gist`        | `g`                | Summarize task counts by status                |
+
+List options:
+
+| Option          | Accepted values                             | Description                                                                            |
+| --------------- | ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `-s, --sort`    | `priority` / `p`, `id` / `i`, `title` / `t` | Sort by priority, ID, or title                                                         |
+| `-r, --reverse` | —                                           | Reverse the selected sort (unprioritized tasks remain at the top for priority sorting) |
+| `-t, --tag`     | A tag value                                 | Filter by tag; repeat for AND matching                                                 |
+| `-c, --closed`  | —                                           | Include closed tasks                                                                   |
 
 ## Git
 
-Tasks are ordinary files, so they work naturally with Git.
+Tasks are ordinary files, so they work naturally with Git:
 
 ```bash
 git add tasks/
 git commit -m "Add ad request timeout task"
 ```
 
-Task history can be inspected using normal Git tools:
+Inspect task history with normal Git tools:
 
 ```bash
 git log -- tasks/20260919-154500/TASK.md
-```
-
-and:
-
-```bash
 git blame tasks/20260919-154500/TASK.md
 ```
 
 Attachments stored alongside a task are also tracked normally by Git.
 
-## Commands
-
-```text
-trask init
-
-trask new <title>
-trask n <title>
-trask add <title>
-trask a <title>
-
-trask show <id>
-trask s <id>
-
-trask list [OPTIONS]
-trask l [OPTIONS]
-
-trask gist
-trask g
-
-trask delete <id>
-trask d <id>
-trask remove <id>
-trask r <id>
-```
-
-### `init`
-
-Initialize a Trask project:
-
-```bash
-trask init
-```
-
-Creates the `.trask` marker and `tasks/` directory.
-
-### `new`
-
-Create a new task:
-
-```bash
-trask new <title>
-```
-
-Aliases:
-
-```bash
-trask n <title>
-trask add <title>
-trask a <title>
-```
-
-A timestamp-based task ID is automatically generated.
-
-### `show`
-
-Display a task:
-
-```bash
-trask show <id>
-trask s <id>
-```
-
-### `list` / `l`
-
-List tasks:
-
-```bash
-trask list
-trask l
-```
-
-Options:
-
-```text
--s, --sort <priority|p|id|i|title|t>
--r, --reverse
--t, --tag <tag>
--c, --closed
-```
-
-Sort aliases:
-
-```text
-priority / p
-id / i
-title / t
-```
-
-Examples:
-
-```bash
-trask l
-trask l -c
-
-trask l -s p
-trask l -s i
-trask l -s t
-
-trask l -r
-trask l -c -r
-
-trask l -t rust
-trask l -t rust -t tooling
-
-trask l -t rust -s t
-trask l -t rust -s p -r
-
-trask l -c -t rust -s i
-trask l -c -t rust -t tooling -s p -r
-```
-
-### `gist` / `g`
-
-Group tasks by status and tags:
-
-```bash
-trask gist
-trask g
-```
-
-### `delete`
-
-Delete a task:
-
-```bash
-trask delete <id>
-```
-
-Aliases:
-
-```bash
-trask d <id>
-trask remove <id>
-trask r <id>
-```
-
-Example:
-
-```bash
-trask d 20260919-154500
-```
-
 ## Design
 
-The tool intentionally uses a small, predictable Markdown format instead of introducing a database or complex serialization format.
-
-The structured fields are:
-
-```text
-title
-status
-priority
-tags
-description
-```
-
-The task status is represented internally by a `TaskStatus` enum with two values:
-
-```text
-Open
-Closed
-```
-
-These are serialized to Markdown as:
-
-```text
-OPEN
-CLOSED
-```
-
-Everything after the `# Description` heading is treated as the task description and may contain normal Markdown.
-
-The task ID belongs to the task directory rather than the `TASK.md` file:
+Trask intentionally uses a small, predictable Markdown format instead of introducing a database or complex serialization format. Task IDs belong to their directories rather than the `TASK.md` files:
 
 ```text
 tasks/<task-id>/TASK.md
-```
-
-Task IDs use the UTC timestamp format:
-
-```text
-YYYYMMDD-HHMMSS
-```
-
-For example:
-
-```text
-tasks/20260919-154500/TASK.md
-```
-
-This also allows additional files to be stored alongside the task:
-
-```text
-tasks/
-└── 20260919-154500/
-    ├── TASK.md
-    ├── screenshot.png
-    └── notes.txt
 ```
 
 The `.trask` marker allows Trask to discover the project root when commands are run from a subdirectory:

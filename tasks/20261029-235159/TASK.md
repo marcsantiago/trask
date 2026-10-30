@@ -1,6 +1,6 @@
 # make 4294967295 a special case and make 1 the highest
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 1
 - TAGS: improvement
 
