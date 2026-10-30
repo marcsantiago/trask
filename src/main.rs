@@ -5,6 +5,8 @@ use arboard::Clipboard;
 use clap::{Parser, Subcommand, ValueEnum};
 use trask::{Task, TaskEntry, TaskId, TaskStatus, TaskStore};
 
+const UNPRIORITIZED_PRIORITY: u32 = u32::MAX;
+
 #[derive(Debug, Parser)]
 #[command(name = "trask")]
 #[command(about = "A simple Markdown task tracker")]
@@ -98,28 +100,27 @@ fn new_task(title: &str) -> Result<()> {
     let task = Task {
         title: title.to_string(),
         status: TaskStatus::Open,
-        priority: u32::MAX,
+        priority: UNPRIORITIZED_PRIORITY,
         tags: Vec::new(),
         description: String::new(),
     };
+
     let clip_id = id.clone();
     store.save(&TaskEntry { id, task })?;
+
     let mut clipboard = Clipboard::new()?;
     clipboard.set_text(clip_id.as_str())?;
+
     Ok(())
 }
 
 fn show_task(id: &str) -> Result<()> {
     let store = TaskStore::discover()?;
     let entry = store.load(&TaskId::new(id))?;
-    let status = match entry.task.status {
-        TaskStatus::Open => "OPEN",
-        TaskStatus::Closed => "CLOSED",
-    };
 
     println!("ID:       {}", entry.id.as_str());
     println!("Title:    {}", entry.task.title);
-    println!("Status:   {}", status);
+    println!("Status:   {}", entry.task.status.as_str());
     println!("Priority: {}", entry.task.priority);
     println!("Tags:     {}", entry.task.tags.join(", "));
     println!();
@@ -156,13 +157,20 @@ fn list_tasks(sort: Sort, reverse: bool, tags: &[String], closed: bool) -> Resul
     }
 
     tasks.sort_by(|a, b| {
+        let a_unprioritized = a.task.priority == UNPRIORITIZED_PRIORITY;
+        let b_unprioritized = b.task.priority == UNPRIORITIZED_PRIORITY;
+
         let ordering = match sort {
-            Sort::Priority => b.task.priority.cmp(&a.task.priority),
+            Sort::Priority => match (a_unprioritized, b_unprioritized) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.task.priority.cmp(&b.task.priority),
+            },
             Sort::Id => a.id.as_str().cmp(b.id.as_str()),
             Sort::Title => a.task.title.cmp(&b.task.title),
         };
 
-        if reverse {
+        if reverse && (!matches!(sort, Sort::Priority) || (!a_unprioritized && !b_unprioritized)) {
             ordering.reverse()
         } else {
             ordering
@@ -170,19 +178,15 @@ fn list_tasks(sort: Sort, reverse: bool, tags: &[String], closed: bool) -> Resul
     });
 
     for entry in tasks {
-        let status = match entry.task.status {
-            TaskStatus::Open => "OPEN",
-            TaskStatus::Closed => "CLOSED",
-        };
-
         println!(
             "{} [{}] [{}] {}",
             entry.id.as_str(),
-            status,
+            entry.task.status.as_str(),
             entry.task.priority,
             entry.task.title
         );
     }
+
     Ok(())
 }
 
@@ -196,6 +200,7 @@ fn matches_tags(task: &Task, tags: &[String]) -> bool {
 fn delete_task(id: &str) -> Result<()> {
     let store = TaskStore::discover()?;
     store.delete(&TaskId::new(id))?;
+
     Ok(())
 }
 
@@ -231,8 +236,10 @@ fn gist() -> Result<()> {
     }
 
     println!("Gist:");
+
     for (status, entry) in &summary {
         println!("{status}: {}", entry.count);
     }
+
     Ok(())
 }
