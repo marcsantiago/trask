@@ -140,17 +140,25 @@ fn list_tasks(sort: Sort, reverse: bool, tags: &[String], closed: bool) -> Resul
             continue;
         }
 
-        let Some(id) = entry.file_name().to_str().map(String::from) else {
+        let file_name = entry.file_name();
+
+        let Some(id) = file_name.to_str() else {
             continue;
         };
 
         let task_id = TaskId::new(id);
 
-        if let Ok(task) = store.load(&task_id)
-            && (closed || task.task.status == TaskStatus::Open)
-            && matches_tags(&task.task, tags)
-        {
-            tasks.push(task);
+        match store.load(&task_id) {
+            Ok(task)
+                if (closed || task.task.status == TaskStatus::Open)
+                    && matches_tags(&task.task, tags) =>
+            {
+                tasks.push(task);
+            }
+            Ok(_) => {}
+            Err(error) => {
+                eprintln!("{id}: {error}");
+            }
         }
     }
 
@@ -189,10 +197,11 @@ fn list_tasks(sort: Sort, reverse: bool, tags: &[String], closed: bool) -> Resul
 }
 
 fn matches_tags(task: &Task, tags: &[String]) -> bool {
-    tags.is_empty()
-        || tags
+    tags.iter().all(|tag| {
+        task.tags
             .iter()
-            .all(|tag| task.tags.iter().any(|task_tag| task_tag == tag))
+            .any(|task_tag| task_tag.eq_ignore_ascii_case(tag.trim()))
+    })
 }
 
 fn delete_task(id: &str) -> Result<()> {
@@ -218,7 +227,9 @@ fn gist() -> Result<()> {
             continue;
         }
 
-        let Some(id) = entry.file_name().to_str().map(String::from) else {
+        let file_name = entry.file_name();
+
+        let Some(id) = file_name.to_str() else {
             continue;
         };
 
