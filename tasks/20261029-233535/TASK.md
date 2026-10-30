@@ -1,6 +1,6 @@
 # make description optional
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 1
 - TAGS: bug
 

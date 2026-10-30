@@ -49,41 +49,79 @@ pub enum ParseError {
 
 impl Task {
     pub fn from_markdown(input: &str) -> Result<Self, ParseError> {
-        let mut lines = input.lines();
+        let lines = input.lines().collect::<Vec<_>>();
 
-        let title = lines
-            .next()
-            .ok_or(ParseError::UnexpectedEnd)?
-            .strip_prefix("# ")
+        let title_index = lines
+            .iter()
+            .position(|line| !line.trim().is_empty())
+            .ok_or(ParseError::UnexpectedEnd)?;
+
+        let title = lines[title_index]
+            .trim()
+            .strip_prefix('#')
+            .filter(|title| !title.starts_with('#'))
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
             .ok_or_else(|| ParseError::InvalidFormat("expected '# <title>'".into()))?
             .to_string();
 
-        expect_blank(&mut lines)?;
+        let mut status = None;
+        let mut priority = None;
+        let mut tags = Vec::new();
+        let mut description_start = None;
 
-        let status = parse_status(&parse_field(&mut lines, "- STATUS: ")?);
+        for (index, line) in lines.iter().enumerate().skip(title_index + 1) {
+            let trimmed = line.trim();
 
-        let priority = parse_field(&mut lines, "- PRIORITY: ")?
-            .parse::<u32>()
-            .map_err(|_| ParseError::InvalidPriority)?;
+            if trimmed.is_empty() {
+                continue;
+            }
 
-        let tags = parse_field(&mut lines, "- TAGS: ")?
-            .split(',')
-            .map(str::trim)
-            .filter(|tag| !tag.is_empty())
-            .map(String::from)
-            .collect();
+            if trimmed.eq_ignore_ascii_case("# Description") {
+                description_start = Some(index + 1);
+                break;
+            }
 
-        expect_blank(&mut lines)?;
+            if let Some((key, value)) = parse_metadata(line) {
+                match key.to_ascii_uppercase().as_str() {
+                    "STATUS" => status = Some(parse_status(value)?),
+                    "PRIORITY" => {
+                        priority = Some(
+                            value
+                                .parse::<u32>()
+                                .map_err(|_| ParseError::InvalidPriority)?,
+                        );
+                    }
+                    "TAGS" => {
+                        tags = value
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|tag| !tag.is_empty())
+                            .map(String::from)
+                            .collect();
+                    }
+                    _ => {
+                        description_start = Some(index);
+                        break;
+                    }
+                }
 
-        let description_header = lines.next().ok_or(ParseError::UnexpectedEnd)?;
+                continue;
+            }
 
-        if description_header != "# Description" {
-            return Err(ParseError::InvalidFormat("expected '# Description'".into()));
+            description_start = Some(index);
+            break;
         }
 
-        expect_blank(&mut lines)?;
+        let status =
+            status.ok_or_else(|| ParseError::InvalidFormat("missing STATUS field".into()))?;
 
-        let description = lines.collect::<Vec<_>>().join("\n");
+        let priority =
+            priority.ok_or_else(|| ParseError::InvalidFormat("missing PRIORITY field".into()))?;
+
+        let description = description_start
+            .map(|start| lines[start..].join("\n").trim_matches('\n').to_string())
+            .unwrap_or_default();
 
         Ok(Self {
             title,
@@ -123,33 +161,23 @@ impl Task {
     }
 }
 
-fn parse_status(value: &str) -> TaskStatus {
-    match value {
-        "OPEN" | "open" => TaskStatus::Open,
-        "CLOSED" | "closed" => TaskStatus::Closed,
-        _ => TaskStatus::Open,
+fn parse_status(value: &str) -> Result<TaskStatus, ParseError> {
+    if value.eq_ignore_ascii_case("OPEN") {
+        return Ok(TaskStatus::Open);
     }
+
+    if value.eq_ignore_ascii_case("CLOSED") {
+        return Ok(TaskStatus::Closed);
+    }
+
+    Err(ParseError::InvalidStatus(value.to_string()))
 }
 
-fn parse_field<'a>(
-    lines: &mut impl Iterator<Item = &'a str>,
-    prefix: &str,
-) -> Result<String, ParseError> {
-    lines
-        .next()
-        .ok_or(ParseError::UnexpectedEnd)?
-        .strip_prefix(prefix)
-        .map(str::trim)
-        .map(String::from)
-        .ok_or_else(|| ParseError::InvalidFormat(format!("expected '{prefix}<value>'")))
-}
+fn parse_metadata(line: &str) -> Option<(&str, &str)> {
+    let line = line.trim().strip_prefix('-').unwrap_or(line).trim();
+    let (key, value) = line.split_once(':')?;
 
-fn expect_blank<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Result<(), ParseError> {
-    match lines.next() {
-        Some("") => Ok(()),
-        Some(_) => Err(ParseError::InvalidFormat("expected blank line".into())),
-        None => Err(ParseError::UnexpectedEnd),
-    }
+    Some((key.trim(), value.trim()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -245,8 +273,8 @@ impl TaskStore {
     }
 
     pub fn delete(&self, id: &TaskId) -> Result<()> {
-        let p = self.task_dir(id);
-        fs::remove_dir_all(p)?;
+        let path = self.task_dir(id);
+        fs::remove_dir_all(path)?;
         Ok(())
     }
 }

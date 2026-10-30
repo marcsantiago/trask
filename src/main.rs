@@ -124,8 +124,6 @@ fn show_task(id: &str) -> Result<()> {
     println!("Priority: {}", entry.task.priority);
     println!("Tags:     {}", entry.task.tags.join(", "));
     println!();
-    println!("# Description");
-    println!();
     println!("{}", entry.task.description);
 
     Ok(())
