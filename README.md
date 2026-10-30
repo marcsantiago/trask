@@ -222,15 +222,15 @@ Restart Neovim and its LSP after changing the configuration.
 </details>
 
 <details>
-<summary><strong>PyCharm (LSP4IJ)</strong></summary>
+<summary><strong>JetBrains (LSP4IJ)</strong></summary>
 
-PyCharm can use `trask-lsp` through [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij), a JetBrains plugin that lets you configure external Language Server Protocol servers without writing a dedicated PyCharm plugin.
+JetBrains can use `trask-lsp` through [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij), a plugin that lets you configure external Language Server Protocol servers without writing a dedicated JetBrains plugin.
 
 #### Install LSP4IJ
 
 1. Open **Settings → Plugins → Marketplace**.
 2. Search for **LSP4IJ** by Red Hat and install it.
-3. Restart PyCharm.
+3. Restart JetBrains.
 
 #### Register `trask-lsp`
 
@@ -249,7 +249,7 @@ PyCharm can use `trask-lsp` through [LSP4IJ](https://plugins.jetbrains.com/plugi
    which trask-lsp
    ```
 
-   Use the returned path in PyCharm. Using an absolute path avoids relying on the environment inherited by the IDE.
+   Use the returned path in JetBrains. Using an absolute path avoids relying on the environment inherited by the IDE.
 
 4. In the **Mappings** tab, add a file-name pattern mapping:
 
@@ -258,7 +258,7 @@ PyCharm can use `trask-lsp` through [LSP4IJ](https://plugins.jetbrains.com/plugi
    | File name pattern | `TASK.md`  |
    | Language ID       | `markdown` |
 
-   Use a file-name pattern mapping rather than creating a custom file type. This keeps `TASK.md` associated with Markdown so PyCharm's Markdown highlighting remains available.
+   Use a file-name pattern mapping rather than creating a custom file type. This keeps `TASK.md` associated with Markdown so JetBrains's Markdown highlighting remains available.
 
 5. In the **Workspace Folders** tab, configure marker-based discovery with:
 
@@ -276,17 +276,17 @@ PyCharm can use `trask-lsp` through [LSP4IJ](https://plugins.jetbrains.com/plugi
 
 The Trask LSP can also resolve task IDs in source files. In the **Mappings** tab, add mappings for the source languages you use, with their corresponding language IDs:
 
-| PyCharm language / file type | Language ID |
-| ---------------------------- | ----------- |
-| Go                           | `go`        |
-| Rust                         | `rust`      |
-| Python                       | `python`    |
+| JetBrains language / file type | Language ID |
+| ------------------------------ | ----------- |
+| Go                             | `go`        |
+| Rust                           | `rust`      |
+| Python                         | `python`    |
 
-Only add mappings for languages supported by your PyCharm installation. These mappings allow the LSP to inspect those open documents for task IDs; task-specific diagnostics and field completion remain limited to files named `TASK.md`.
+Only add mappings for languages supported by your JetBrains installation. These mappings allow the LSP to inspect those open documents for task IDs; task-specific diagnostics and field completion remain limited to files named `TASK.md`.
 
 #### Formatting
 
-For a valid `TASK.md`, use PyCharm's **Code → Reformat Code** or **Reformat File** action. LSP4IJ routes the formatting request to Trask, which normalizes the task metadata and description heading.
+For a valid `TASK.md`, use JetBrains' **Code → Reformat Code** or **Reformat File** action. LSP4IJ routes the formatting request to Trask, which normalizes the task metadata and description heading.
 
 </details>
 
