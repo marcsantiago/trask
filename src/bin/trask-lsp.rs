@@ -12,16 +12,14 @@ use tower_lsp::{
     lsp_types::{
         CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
         CompletionResponse, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
-        DidCloseTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
-        GotoDefinitionResponse, InitializeParams, InitializeResult, InitializedParams, Location,
-        OneOf, Position, Range, ServerCapabilities, TextDocumentSyncCapability,
-        TextDocumentSyncKind, Url,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
+        GotoDefinitionParams, GotoDefinitionResponse, InitializeParams, InitializeResult,
+        InitializedParams, Location, OneOf, Position, Range, ServerCapabilities,
+        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
     },
 };
-use trask::{TASK_FILE, Task, TaskId, TaskStore};
+use trask::{ParseError, TASK_FILE, TASKS_DIR, Task, TaskId, TaskStore};
 
-const STATUS_PREFIX: &str = "- STATUS: ";
-const TAGS_PREFIX: &str = "- TAGS: ";
 const TASK_ID_LEN: usize = 15;
 
 struct Backend {
@@ -125,6 +123,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 definition_provider: Some(OneOf::Left(true)),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![":".to_string(), ",".to_string()]),
                     ..Default::default()
@@ -153,7 +152,6 @@ impl LanguageServer for Backend {
         let version = params.text_document.version;
         let text = params.text_document.text;
 
-        // Store every open document so definitions work in source files too.
         self.documents
             .write()
             .unwrap()
@@ -175,7 +173,6 @@ impl LanguageServer for Backend {
             return;
         };
 
-        // TextDocumentSyncKind::FULL means change.text is the full document.
         self.documents
             .write()
             .unwrap()
@@ -213,12 +210,11 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // LSP character positions use UTF-16 code units.
-        let Some(id) = task_id_at(line, position.character as usize) else {
+        let Some(id) = task_id_at(line, position.character) else {
             return Ok(None);
         };
 
-        let path = self.root().join("tasks").join(id).join(TASK_FILE);
+        let path = self.root().join(TASKS_DIR).join(id).join(TASK_FILE);
 
         if !path.is_file() {
             return Ok(None);
@@ -251,13 +247,25 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let character = position.character as usize;
+        let cursor = utf16_to_byte_index(line, position.character);
 
-        if status_value(line, character).is_some() {
-            let items = ["OPEN", "CLOSED"]
+        if let Some(value) = field_value(line, cursor, "STATUS") {
+            let prefix = value.trim().to_ascii_lowercase();
+
+            let statuses = [
+                ("OPEN", &["open", "opened", "o"][..]),
+                ("CLOSED", &["closed", "close", "c"][..]),
+            ];
+
+            let items = statuses
                 .into_iter()
-                .map(|status| CompletionItem {
+                .filter(|(_, aliases)| {
+                    prefix.is_empty() || aliases.iter().any(|alias| alias.starts_with(&prefix))
+                })
+                .map(|(status, aliases)| CompletionItem {
                     label: status.to_string(),
+                    filter_text: Some(aliases.join(" ")),
+                    insert_text: Some(status.to_string()),
                     kind: Some(CompletionItemKind::ENUM),
                     ..Default::default()
                 })
@@ -266,12 +274,22 @@ impl LanguageServer for Backend {
             return Ok(Some(CompletionResponse::Array(items)));
         }
 
-        if tag_value(line, character).is_some() {
+        if let Some(value) = field_value(line, cursor, "TAGS") {
+            let prefix = value
+                .rsplit(',')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+
             let items = self
                 .tags()
                 .into_iter()
+                .filter(|tag| tag.to_ascii_lowercase().starts_with(&prefix))
                 .map(|tag| CompletionItem {
-                    label: tag,
+                    label: tag.clone(),
+                    filter_text: Some(tag.clone()),
+                    insert_text: Some(tag),
                     kind: Some(CompletionItemKind::VALUE),
                     ..Default::default()
                 })
@@ -282,31 +300,57 @@ impl LanguageServer for Backend {
 
         Ok(None)
     }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = &params.text_document.uri;
+
+        if !Self::is_task_document(uri) {
+            return Ok(None);
+        }
+
+        let Some(text) = self.document(uri) else {
+            return Ok(None);
+        };
+
+        let Ok(task) = Task::from_markdown(&text) else {
+            return Ok(None);
+        };
+
+        let formatted = task.to_markdown();
+
+        if formatted == text {
+            return Ok(None);
+        }
+
+        let range = Range::new(Position::new(0, 0), document_end(&text));
+
+        Ok(Some(vec![TextEdit::new(range, formatted)]))
+    }
 }
 
 /// Returns a Trask task ID when the cursor is positioned on one.
 ///
 /// Expected format: YYYYMMDD-HHMMSS.
-fn task_id_at(line: &str, cursor: usize) -> Option<&str> {
+fn task_id_at(line: &str, cursor: u32) -> Option<&str> {
     let bytes = line.as_bytes();
 
-    if bytes.len() < TASK_ID_LEN {
-        return None;
-    }
-
-    for start in 0..=bytes.len() - TASK_ID_LEN {
+    for (start, _) in line.char_indices() {
         let end = start + TASK_ID_LEN;
-        let candidate = &bytes[start..end];
 
-        let valid = candidate[..8].iter().all(|b| b.is_ascii_digit())
-            && candidate[8] == b'-'
-            && candidate[9..].iter().all(|b| b.is_ascii_digit());
+        let Some(candidate) = line.get(start..end) else {
+            continue;
+        };
+
+        let candidate_bytes = candidate.as_bytes();
+
+        let valid = candidate_bytes[..8].iter().all(u8::is_ascii_digit)
+            && candidate_bytes[8] == b'-'
+            && candidate_bytes[9..].iter().all(u8::is_ascii_digit);
 
         if !valid {
             continue;
         }
 
-        // Do not match an ID embedded in a larger ASCII identifier.
         if start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
             continue;
         }
@@ -315,10 +359,11 @@ fn task_id_at(line: &str, cursor: usize) -> Option<&str> {
             continue;
         }
 
-        let start_utf16 = line[..start].encode_utf16().count();
+        let start_utf16 = line[..start].encode_utf16().count() as u32;
+        let end_utf16 = start_utf16 + TASK_ID_LEN as u32;
 
-        if (start_utf16..start_utf16 + TASK_ID_LEN).contains(&cursor) {
-            return line.get(start..end);
+        if (start_utf16..end_utf16).contains(&cursor) {
+            return Some(candidate);
         }
     }
 
@@ -326,40 +371,105 @@ fn task_id_at(line: &str, cursor: usize) -> Option<&str> {
 }
 
 fn diagnostics(text: &str) -> Vec<Diagnostic> {
-    match Task::from_markdown(text) {
-        Ok(_) => Vec::new(),
-        Err(error) => vec![Diagnostic {
-            range: Range {
-                start: Position {
-                    line: 0,
-                    character: 0,
-                },
-                end: Position {
-                    line: 0,
-                    character: 1,
-                },
-            },
-            severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("trask".to_string()),
-            message: error.to_string(),
-            ..Default::default()
-        }],
+    let Err(error) = Task::from_markdown(text) else {
+        return Vec::new();
+    };
+
+    let line_number = match &error {
+        ParseError::InvalidStatus(_) => find_metadata_line(text, "STATUS"),
+        ParseError::InvalidPriority => find_metadata_line(text, "PRIORITY"),
+        ParseError::InvalidFormat(message) if message.contains("STATUS") => {
+            find_metadata_line(text, "STATUS")
+        }
+        ParseError::InvalidFormat(message) if message.contains("PRIORITY") => {
+            find_metadata_line(text, "PRIORITY")
+        }
+        _ => None,
     }
+    .unwrap_or(0);
+
+    let line = text.lines().nth(line_number).unwrap_or("");
+    let end = line.encode_utf16().count().max(1) as u32;
+
+    vec![Diagnostic {
+        range: Range::new(
+            Position::new(line_number as u32, 0),
+            Position::new(line_number as u32, end),
+        ),
+        severity: Some(DiagnosticSeverity::ERROR),
+        source: Some("trask".to_string()),
+        message: error.to_string(),
+        ..Default::default()
+    }]
 }
 
-fn status_value(line: &str, cursor: usize) -> Option<&str> {
-    let value = line.strip_prefix(STATUS_PREFIX)?;
-    let cursor = cursor.saturating_sub(STATUS_PREFIX.len());
+fn find_metadata_line(text: &str, field: &str) -> Option<usize> {
+    text.lines().position(|line| {
+        let line = line.trim().strip_prefix('-').unwrap_or(line).trim();
 
-    Some(&value[..cursor.min(value.len())])
+        line.split_once(':')
+            .is_some_and(|(key, _)| key.trim().eq_ignore_ascii_case(field))
+    })
 }
 
-fn tag_value(line: &str, cursor: usize) -> Option<&str> {
-    let value = line.strip_prefix(TAGS_PREFIX)?;
-    let cursor = cursor.saturating_sub(TAGS_PREFIX.len());
-    let value = &value[..cursor.min(value.len())];
+/// Returns a metadata value up to the cursor, accepting flexible spacing.
+fn field_value<'a>(line: &'a str, cursor: usize, field: &str) -> Option<&'a str> {
+    let mut start = line.len() - line.trim_start().len();
 
-    value.rsplit(',').next().map(str::trim)
+    if let Some(after_marker) = line[start..].strip_prefix('-') {
+        start += 1 + after_marker.len() - after_marker.trim_start().len();
+    }
+
+    let metadata = &line[start..];
+    let (key, _) = metadata.split_once(':')?;
+
+    if !key.trim().eq_ignore_ascii_case(field) {
+        return None;
+    }
+
+    let value_start = start + key.len() + 1;
+    let remaining = &line[value_start..];
+    let value_start = value_start + remaining.len() - remaining.trim_start().len();
+
+    if cursor < value_start {
+        return None;
+    }
+
+    line.get(value_start..cursor.min(line.len()))
+}
+
+fn utf16_to_byte_index(text: &str, target: u32) -> usize {
+    let mut utf16_offset = 0;
+
+    for (byte_index, character) in text.char_indices() {
+        if utf16_offset >= target {
+            return byte_index;
+        }
+
+        let width = character.len_utf16() as u32;
+
+        if utf16_offset + width > target {
+            return byte_index;
+        }
+
+        utf16_offset += width;
+    }
+
+    text.len()
+}
+
+fn document_end(text: &str) -> Position {
+    let line = text.bytes().filter(|byte| *byte == b'\n').count() as u32;
+
+    let character = text
+        .rsplit('\n')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches('\r')
+        .encode_utf16()
+        .count() as u32;
+
+    Position::new(line, character)
 }
 
 #[tokio::main]

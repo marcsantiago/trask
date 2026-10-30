@@ -162,15 +162,11 @@ impl Task {
 }
 
 fn parse_status(value: &str) -> Result<TaskStatus, ParseError> {
-    if value.eq_ignore_ascii_case("OPEN") {
-        return Ok(TaskStatus::Open);
+    match value.trim().to_ascii_lowercase().as_str() {
+        "open" | "opened" | "o" => Ok(TaskStatus::Open),
+        "closed" | "close" | "c" => Ok(TaskStatus::Closed),
+        _ => Err(ParseError::InvalidStatus(value.to_string())),
     }
-
-    if value.eq_ignore_ascii_case("CLOSED") {
-        return Ok(TaskStatus::Closed);
-    }
-
-    Err(ParseError::InvalidStatus(value.to_string()))
 }
 
 fn parse_metadata(line: &str) -> Option<(&str, &str)> {
