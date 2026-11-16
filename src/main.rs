@@ -42,6 +42,9 @@ enum Command {
 
         #[arg(short, long)]
         closed: bool,
+
+        #[arg(short, long, alias = "desc", alias = "d")]
+        full: bool,
     },
 
     #[command(alias = "d", alias = "remove", alias = "r")]
@@ -77,7 +80,8 @@ fn main() -> Result<()> {
             reverse,
             tag,
             closed,
-        } => list_tasks(sort, reverse, &tag, closed)?,
+            full,
+        } => list_tasks(sort, reverse, &tag, closed, full)?,
         Command::Delete { id } => delete_task(&id)?,
         Command::Gist => gist()?,
     }
@@ -129,7 +133,7 @@ fn show_task(id: &str) -> Result<()> {
     Ok(())
 }
 
-fn list_tasks(sort: Sort, reverse: bool, tags: &[String], closed: bool) -> Result<()> {
+fn list_tasks(sort: Sort, reverse: bool, tags: &[String], closed: bool, full: bool) -> Result<()> {
     let store = TaskStore::discover()?;
     let mut tasks = Vec::new();
 
@@ -183,14 +187,26 @@ fn list_tasks(sort: Sort, reverse: bool, tags: &[String], closed: bool) -> Resul
         }
     });
 
-    for entry in tasks {
-        println!(
+    for (i, entry) in tasks.iter().enumerate() {
+        let task = &entry.task;
+
+        print!(
             "{} [{}] [{}] {}",
             entry.id.as_str(),
-            entry.task.status.as_str(),
-            entry.task.priority,
-            entry.task.title
+            task.status.as_str(),
+            task.priority,
+            task.title
         );
+
+        if full {
+            println!(":\n{}", task.description);
+
+            if i + 1 < tasks.len() {
+                println!("{}", "-".repeat(50));
+            }
+        } else {
+            println!();
+        }
     }
 
     Ok(())
