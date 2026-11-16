@@ -545,6 +545,15 @@ You can specify multiple tags. A task must contain **all** requested tags (AND m
 trask l -t bug -t rtb
 ```
 
+### List with description
+
+```bash
+trask l -f
+trask l --full
+trask l --desc
+trask l --d
+```
+
 ### Combine filters and sorting
 
 List options can be combined:
