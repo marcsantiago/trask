@@ -344,6 +344,13 @@ Create a task with:
 trask new "Fix ad request timeout"
 ```
 
+Creating a task also supports adding a priority at the same time.
+
+```bash
+trask new "Fix ad request timeout" -p 1
+trask new -p 1 "Fix ad request timeout"
+```
+
 Aliases:
 
 ```bash
@@ -645,14 +652,15 @@ The LSP supports this navigation from documents it has open. For Helix, add `tra
 
 ## Commands
 
-| Command             | Aliases            | Description                                    |
-| ------------------- | ------------------ | ---------------------------------------------- |
-| `trask init`        | —                  | Initialize a Trask project                     |
-| `trask new <title>` | `n`, `add`, `a`    | Create a task and copy its ID to the clipboard |
-| `trask show <id>`   | `s`                | Show a task                                    |
-| `trask list`        | `l`                | List tasks with optional filters and sorting   |
-| `trask delete <id>` | `d`, `remove`, `r` | Delete a task directory                        |
-| `trask gist`        | `g`                | Summarize task counts by status                |
+| Command                  | Aliases            | Description                                                    |
+| ------------------------ | ------------------ | -------------------------------------------------------------- |
+| `trask init`             | —                  | Initialize a Trask project                                     |
+| `trask new <title>`      | `n`, `add`, `a`    | Create a task and copy its ID to the clipboard                 |
+| `trask new -p 1 <title>` | `n`, `add`, `a`    | Create a task with a priority and copy its ID to the clipboard |
+| `trask show <id>`        | `s`                | Show a task                                                    |
+| `trask list`             | `l`                | List tasks with optional filters and sorting                   |
+| `trask delete <id>`      | `d`, `remove`, `r` | Delete a task directory                                        |
+| `trask gist`             | `g`                | Summarize task counts by status                                |
 
 List options:
 
