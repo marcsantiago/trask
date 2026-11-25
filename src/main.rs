@@ -22,6 +22,9 @@ enum Command {
     #[command(alias = "n", alias = "add", alias = "a")]
     New {
         title: String,
+
+        #[arg(short, long)]
+        priority: Option<u32>,
     },
 
     #[command(alias = "s")]
@@ -73,7 +76,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Init => init()?,
-        Command::New { title } => new_task(&title)?,
+        Command::New { title, priority } => new_task(&title, priority)?,
         Command::Show { id } => show_task(&id)?,
         Command::List {
             sort,
@@ -91,20 +94,23 @@ fn main() -> Result<()> {
 
 fn init() -> Result<()> {
     TaskStore::init(".")?;
-
     println!("initialized trask");
-
     Ok(())
 }
 
-fn new_task(title: &str) -> Result<()> {
+fn new_task(title: &str, priority: Option<u32>) -> Result<()> {
     let store = TaskStore::discover()?;
     let id = TaskId::generate(&store)?;
+
+    let mut p = UNPRIORITIZED_PRIORITY;
+    if let Some(pp) = priority {
+        p = pp
+    }
 
     let task = Task {
         title: title.to_string(),
         status: TaskStatus::Open,
-        priority: UNPRIORITIZED_PRIORITY,
+        priority: p,
         tags: Vec::new(),
         description: String::new(),
     };
